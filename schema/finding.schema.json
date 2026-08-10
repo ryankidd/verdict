@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ryankidd/verdict/schema/finding.schema.json",
+  "title": "Finding",
+  "description": "A single issue reported by a scanning tool, in the verdict envelope.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "type": "string",
+      "description": "Name of the tool that produced this finding, e.g. \"secretscan\"."
+    },
+    "rule": {
+      "type": "string",
+      "description": "Tool-specific identifier for the rule or check that triggered, e.g. \"aws-key\"."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning", "info"],
+      "description": "How serious the finding is."
+    },
+    "path": {
+      "type": "string",
+      "description": "File path the finding applies to, relative to the scan root."
+    },
+    "line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-indexed line number the finding applies to."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable description of the finding."
+    },
+    "fingerprint": {
+      "type": "string",
+      "description": "Stable identifier for this finding, used to dedupe the same finding across repeated runs. Derived from tool, rule, path, and line — see the README for the exact derivation. Tools may supply their own; verdict fills in a default when absent."
+    }
+  },
+  "required": ["tool", "rule", "severity", "path", "line", "message"],
+  "additionalProperties": false
+}
