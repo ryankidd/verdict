@@ -5,24 +5,78 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22.2", "stable"]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22.2"
+          go-version: ${{ matrix.go }}
+      - run: go build ./...
       - run: go vet ./...
-      - run: go test ./... -race
+      - run: go test ./... -race -shuffle=on
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22.2"
+          go-version: stable
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+
+  vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the published schema is a valid 2020-12 schema
+        run: |
+          pip install --quiet jsonschema
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+
+          with open("schema/finding.schema.json") as f:
+              schema = json.load(f)
+
+          Draft202012Validator.check_schema(schema)
+          print("schema/finding.schema.json is a valid draft 2020-12 schema")
+          PY
