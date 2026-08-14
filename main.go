@@ -25,19 +25,23 @@ const (
 
 func main() {
 	failOn := flag.String("fail-on", "", "exit with status 2 if any finding's severity is at or above this level (error, warning, or info)")
+	format := flag.String("format", "json", "output format: json or markdown")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintln(out, "usage: verdict [-fail-on severity] [file...]")
+		fmt.Fprintln(out, "usage: verdict [-fail-on severity] [-format json|markdown] [file...]")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Merges the given findings files into a single deduplicated, ordered")
-		fmt.Fprintln(out, "JSON array on stdout. Reads stdin when no files are given.")
+		fmt.Fprintln(out, "set and writes it to stdout. Reads stdin when no files are given.")
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "With -format markdown, writes a human-readable report grouped by tool")
+		fmt.Fprintln(out, "and then by file instead of the default JSON array.")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "With -fail-on, exits with status 2 if any finding's severity is at or")
 		fmt.Fprintln(out, "above the given level (error, warning, or info).")
 	}
 	flag.Parse()
 
-	met, err := run(flag.Args(), *failOn, os.Stdin, os.Stdout)
+	met, err := run(flag.Args(), *failOn, *format, os.Stdin, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "verdict:", err)
 		os.Exit(exitError)
@@ -49,9 +53,17 @@ func main() {
 }
 
 // run merges the findings from paths (or stdin when paths is empty) onto out.
-// When failOn names a severity, run reports whether any merged finding sits at
-// or above it; the report is meaningful only when the returned error is nil.
-func run(paths []string, failOn string, stdin io.Reader, out io.Writer) (bool, error) {
+// The format selects the rendering: "json" writes the deduplicated, ordered
+// array; "markdown" writes a report grouped by tool and then by file. When
+// failOn names a severity, run reports whether any merged finding sits at or
+// above it; the report is meaningful only when the returned error is nil.
+func run(paths []string, failOn, format string, stdin io.Reader, out io.Writer) (bool, error) {
+	switch format {
+	case "json", "markdown":
+	default:
+		return false, fmt.Errorf("invalid -format value %q: want json or markdown", format)
+	}
+
 	var threshold finding.Severity
 	if failOn != "" {
 		var ok bool
@@ -80,10 +92,16 @@ func run(paths []string, failOn string, stdin io.Reader, out io.Writer) (bool, e
 
 	merged := finding.Merge(sets...)
 
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(merged); err != nil {
-		return false, err
+	if format == "markdown" {
+		if _, err := io.WriteString(out, finding.Markdown(merged)); err != nil {
+			return false, err
+		}
+	} else {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(merged); err != nil {
+			return false, err
+		}
 	}
 
 	if failOn == "" {

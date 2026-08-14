@@ -23,7 +23,7 @@ func writeFile(t *testing.T, name, contents string) string {
 func runOK(t *testing.T, paths []string, stdin string) []finding.Finding {
 	t.Helper()
 	var out bytes.Buffer
-	if _, err := run(paths, "", strings.NewReader(stdin), &out); err != nil {
+	if _, err := run(paths, "", "json", strings.NewReader(stdin), &out); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
 	var findings []finding.Finding
@@ -79,10 +79,10 @@ func TestRunOutputIndependentOfFileOrder(t *testing.T) {
 	b := writeFile(t, "b.json", setB)
 
 	var forward, reverse bytes.Buffer
-	if _, err := run([]string{a, b}, "", strings.NewReader(""), &forward); err != nil {
+	if _, err := run([]string{a, b}, "", "json", strings.NewReader(""), &forward); err != nil {
 		t.Fatalf("run(a, b) returned error: %v", err)
 	}
-	if _, err := run([]string{b, a}, "", strings.NewReader(""), &reverse); err != nil {
+	if _, err := run([]string{b, a}, "", "json", strings.NewReader(""), &reverse); err != nil {
 		t.Fatalf("run(b, a) returned error: %v", err)
 	}
 	if forward.String() != reverse.String() {
@@ -102,7 +102,7 @@ func TestRunReadsStdinWithoutFiles(t *testing.T) {
 
 func TestRunEmitsEmptyArray(t *testing.T) {
 	var out bytes.Buffer
-	if _, err := run(nil, "", strings.NewReader("[]"), &out); err != nil {
+	if _, err := run(nil, "", "json", strings.NewReader("[]"), &out); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
 	if got := strings.TrimSpace(out.String()); got != "[]" {
@@ -113,7 +113,7 @@ func TestRunEmitsEmptyArray(t *testing.T) {
 func TestRunReportsMissingFile(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.json")
 
-	_, err := run([]string{missing}, "", strings.NewReader(""), &bytes.Buffer{})
+	_, err := run([]string{missing}, "", "json", strings.NewReader(""), &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("run returned no error for a missing file")
 	}
@@ -127,7 +127,7 @@ func TestRunReportsMalformedFile(t *testing.T) {
 	bad := writeFile(t, "bad.json", `{"not":"an array"}`)
 
 	var out bytes.Buffer
-	_, err := run([]string{good, bad}, "", strings.NewReader(""), &out)
+	_, err := run([]string{good, bad}, "", "json", strings.NewReader(""), &out)
 	if err == nil {
 		t.Fatal("run returned no error for a malformed file")
 	}
@@ -139,9 +139,63 @@ func TestRunReportsMalformedFile(t *testing.T) {
 	}
 }
 
+func TestRunMarkdownFormatGroupsOutput(t *testing.T) {
+	var out bytes.Buffer
+	if _, err := run(nil, "", "markdown", strings.NewReader(setA), &out); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	got := out.String()
+	if !strings.HasPrefix(got, "# Findings") {
+		t.Errorf("markdown output missing heading:\n%s", got)
+	}
+	for _, want := range []string{
+		"## lint",
+		"## secretscan",
+		"### config.go",
+		"### main.go",
+		"- config.go:12 — `aws-key` (error): possible AWS access key",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("markdown output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunMarkdownFormatStillGates(t *testing.T) {
+	var out bytes.Buffer
+	met, err := run(nil, "error", "markdown", strings.NewReader(setA), &out)
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if !met {
+		t.Error("run did not report the error-severity finding meeting -fail-on error in markdown format")
+	}
+	if !strings.HasPrefix(out.String(), "# Findings") {
+		t.Errorf("markdown output missing heading:\n%s", out.String())
+	}
+}
+
+func TestRunInvalidFormatValue(t *testing.T) {
+	var out bytes.Buffer
+	met, err := run(nil, "", "yaml", strings.NewReader(setA), &out)
+	if err == nil {
+		t.Fatal("run returned no error for an invalid -format value")
+	}
+	if !strings.Contains(err.Error(), "yaml") {
+		t.Errorf("error does not name the bad value: %v", err)
+	}
+	if met {
+		t.Error("run reported meeting a threshold on an invalid -format value")
+	}
+	if out.Len() != 0 {
+		t.Errorf("run wrote output despite the invalid value: %s", out.String())
+	}
+}
+
 func TestRunFailOnMeetsThreshold(t *testing.T) {
 	var out bytes.Buffer
-	met, err := run(nil, "error", strings.NewReader(setA), &out)
+	met, err := run(nil, "error", "json", strings.NewReader(setA), &out)
 	if err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -161,7 +215,7 @@ func TestRunFailOnMeetsThreshold(t *testing.T) {
 
 func TestRunFailOnBelowThreshold(t *testing.T) {
 	var out bytes.Buffer
-	met, err := run(nil, "error", strings.NewReader(setLow), &out)
+	met, err := run(nil, "error", "json", strings.NewReader(setLow), &out)
 	if err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -175,7 +229,7 @@ func TestRunFailOnBelowThreshold(t *testing.T) {
 
 func TestRunFailOnAtThreshold(t *testing.T) {
 	var out bytes.Buffer
-	met, err := run(nil, "warning", strings.NewReader(setLow), &out)
+	met, err := run(nil, "warning", "json", strings.NewReader(setLow), &out)
 	if err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -186,7 +240,7 @@ func TestRunFailOnAtThreshold(t *testing.T) {
 
 func TestRunFailOnUnsetNeverMeets(t *testing.T) {
 	var out bytes.Buffer
-	met, err := run(nil, "", strings.NewReader(setA), &out)
+	met, err := run(nil, "", "json", strings.NewReader(setA), &out)
 	if err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -197,7 +251,7 @@ func TestRunFailOnUnsetNeverMeets(t *testing.T) {
 
 func TestRunFailOnInvalidValue(t *testing.T) {
 	var out bytes.Buffer
-	met, err := run(nil, "critical", strings.NewReader(setA), &out)
+	met, err := run(nil, "critical", "json", strings.NewReader(setA), &out)
 	if err == nil {
 		t.Fatal("run returned no error for an invalid -fail-on value")
 	}
