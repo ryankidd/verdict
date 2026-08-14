@@ -63,6 +63,29 @@ cat findings.json | verdict
 
 Either way the output is a single JSON array containing the merged findings.
 
+## Gating
+
+`--fail-on=<severity>` turns a run into a check. After the merge is printed,
+`verdict` exits non-zero if any finding's severity is at or above the given
+level, and zero otherwise. Severities are ordered `error` > `warning` >
+`info`, so `--fail-on=warning` trips on warnings and errors but not on info.
+
+```sh
+verdict --fail-on=error secretscan.json lint.json
+```
+
+The merge is always written to stdout, whether or not the threshold is met,
+so the same command reports the findings and sets the status. This makes it a
+drop-in CI step:
+
+```sh
+verdict --fail-on=error findings/*.json > merged.json
+```
+
+Findings whose severity is not one of `error`, `warning`, or `info` are
+ignored for gating; they can't be placed in the ordering, so they never trip
+the threshold.
+
 ## Merging
 
 Findings from every input file go into one set, in the order the files were
@@ -91,9 +114,16 @@ safe to commit, diff, or compare between builds.
 
 ## Exit status
 
-`verdict` exits non-zero and writes nothing to stdout if any input file is
-missing or does not contain a valid array of findings. A partial merge is
-never emitted.
+| Code | Meaning                                                                    |
+|------|----------------------------------------------------------------------------|
+| `0`  | Success; no `--fail-on` threshold was met.                                 |
+| `1`  | Usage or input error — a missing file, malformed input, or an invalid `--fail-on` value. |
+| `2`  | A finding met the `--fail-on` threshold.                                   |
+
+On a usage or input error `verdict` writes nothing to stdout; a partial merge
+is never emitted. The threshold code (`2`) is kept distinct from the error
+code (`1`) so CI can tell "the tool failed to run" apart from "the tool ran
+and found something worth failing on".
 
 ## Development
 
