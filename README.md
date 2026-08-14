@@ -63,6 +63,42 @@ cat findings.json | verdict
 
 Either way the output is a single JSON array containing the merged findings.
 
+## Output format
+
+By default `verdict` prints the merged findings as a JSON array. Pass
+`--format=markdown` for a human-readable report instead, grouped by tool and
+then by file within each tool:
+
+```sh
+verdict --format=markdown secretscan.json lint.json
+```
+
+Each finding is listed with its location as `path:line`, its rule, its
+severity, and its message:
+
+```markdown
+# Findings
+
+## lint
+
+### main.go
+
+- main.go:3 — `unused` (warning): unused variable
+
+## secretscan
+
+### config.go
+
+- config.go:12 — `aws-key` (error): possible AWS access key
+```
+
+Tools and the files under them are emitted in name order, and findings within
+a file follow the same ordering as the JSON output, so the report is
+deterministic. `--format=json` is the default and can be given explicitly.
+
+The format only changes the rendering; `--fail-on` gating (below) applies the
+same way in either format.
+
 ## Gating
 
 `--fail-on=<severity>` turns a run into a check. After the merge is printed,
