@@ -96,8 +96,27 @@ Tools and the files under them are emitted in name order, and findings within
 a file follow the same ordering as the JSON output, so the report is
 deterministic. `--format=json` is the default and can be given explicitly.
 
+Pass `--format=github` to emit [GitHub Actions workflow
+commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-notice-message),
+one per finding. Printed on a runner, each line becomes an annotation attached
+to the file and line it names:
+
+```sh
+verdict --format=github secretscan.json lint.json
+```
+
+```text
+::error file=config.go,line=12,title=aws-key::possible AWS access key
+::warning file=main.go,line=3,title=unused::unused variable
+```
+
+Severity maps to the annotation level: `error` to `error`, `warning` to
+`warning`, and `info` to `notice`. A finding with no path omits the `file`
+property and one with no line omits `line`, and the message and property values
+are escaped per GitHub's workflow-command rules.
+
 The format only changes the rendering; `--fail-on` gating (below) applies the
-same way in either format.
+same way across formats.
 
 ## Gating
 
