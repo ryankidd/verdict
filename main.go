@@ -25,16 +25,17 @@ const (
 
 func main() {
 	failOn := flag.String("fail-on", "", "exit with status 2 if any finding's severity is at or above this level (error, warning, or info)")
-	format := flag.String("format", "json", "output format: json or markdown")
+	format := flag.String("format", "json", "output format: json, markdown, or github")
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintln(out, "usage: verdict [-fail-on severity] [-format json|markdown] [file...]")
+		fmt.Fprintln(out, "usage: verdict [-fail-on severity] [-format json|markdown|github] [file...]")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Merges the given findings files into a single deduplicated, ordered")
 		fmt.Fprintln(out, "set and writes it to stdout. Reads stdin when no files are given.")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "With -format markdown, writes a human-readable report grouped by tool")
-		fmt.Fprintln(out, "and then by file instead of the default JSON array.")
+		fmt.Fprintln(out, "and then by file instead of the default JSON array. With -format")
+		fmt.Fprintln(out, "github, writes one GitHub Actions workflow annotation per finding.")
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "With -fail-on, exits with status 2 if any finding's severity is at or")
 		fmt.Fprintln(out, "above the given level (error, warning, or info).")
@@ -54,14 +55,15 @@ func main() {
 
 // run merges the findings from paths (or stdin when paths is empty) onto out.
 // The format selects the rendering: "json" writes the deduplicated, ordered
-// array; "markdown" writes a report grouped by tool and then by file. When
+// array; "markdown" writes a report grouped by tool and then by file; "github"
+// writes one GitHub Actions workflow annotation per finding. When
 // failOn names a severity, run reports whether any merged finding sits at or
 // above it; the report is meaningful only when the returned error is nil.
 func run(paths []string, failOn, format string, stdin io.Reader, out io.Writer) (bool, error) {
 	switch format {
-	case "json", "markdown":
+	case "json", "markdown", "github":
 	default:
-		return false, fmt.Errorf("invalid -format value %q: want json or markdown", format)
+		return false, fmt.Errorf("invalid -format value %q: want json, markdown, or github", format)
 	}
 
 	var threshold finding.Severity
@@ -92,11 +94,16 @@ func run(paths []string, failOn, format string, stdin io.Reader, out io.Writer) 
 
 	merged := finding.Merge(sets...)
 
-	if format == "markdown" {
+	switch format {
+	case "markdown":
 		if _, err := io.WriteString(out, finding.Markdown(merged)); err != nil {
 			return false, err
 		}
-	} else {
+	case "github":
+		if _, err := io.WriteString(out, finding.GitHub(merged)); err != nil {
+			return false, err
+		}
+	default:
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(merged); err != nil {
