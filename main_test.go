@@ -162,6 +162,22 @@ func TestRunMarkdownFormatGroupsOutput(t *testing.T) {
 	}
 }
 
+func TestRunGitHubFormatEmitsAnnotations(t *testing.T) {
+	var out bytes.Buffer
+	if _, err := run(nil, "", "github", strings.NewReader(setA), &out); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	want := strings.Join([]string{
+		"::error file=config.go,line=12,title=aws-key::possible AWS access key",
+		"::warning file=main.go,line=3,title=unused::unused variable",
+		"",
+	}, "\n")
+	if got := out.String(); got != want {
+		t.Errorf("github output mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
 func TestRunMarkdownFormatStillGates(t *testing.T) {
 	var out bytes.Buffer
 	met, err := run(nil, "error", "markdown", strings.NewReader(setA), &out)
