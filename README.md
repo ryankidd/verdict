@@ -180,6 +180,101 @@ is never emitted. The threshold code (`2`) is kept distinct from the error
 code (`1`) so CI can tell "the tool failed to run" apart from "the tool ran
 and found something worth failing on".
 
+## Worked example
+
+The [`examples/`](examples) directory holds the output of two tools scanning
+the same tree: [`secretscan.json`](examples/secretscan.json) from a secret
+scanner and [`staticcheck.json`](examples/staticcheck.json) from a Go linter.
+Merging them gives one report ordered by location, regardless of which tool
+found what:
+
+```sh
+verdict examples/secretscan.json examples/staticcheck.json
+```
+
+```json
+[
+  {
+    "tool": "secretscan",
+    "rule": "aws-key",
+    "severity": "error",
+    "path": "config/settings.go",
+    "line": 12,
+    "message": "possible AWS access key",
+    "fingerprint": "f4f8f79ab3069b17"
+  },
+  {
+    "tool": "staticcheck",
+    "rule": "U1000",
+    "severity": "warning",
+    "path": "config/settings.go",
+    "line": 31,
+    "message": "func loadLegacy is unused",
+    "fingerprint": "ac54c26cf8c85f41"
+  },
+  {
+    "tool": "secretscan",
+    "rule": "generic-token",
+    "severity": "warning",
+    "path": "deploy/env.sh",
+    "line": 4,
+    "message": "high-entropy string assigned to TOKEN",
+    "fingerprint": "7bea08d78bcde46f"
+  },
+  {
+    "tool": "staticcheck",
+    "rule": "SA4006",
+    "severity": "info",
+    "path": "server/handler.go",
+    "line": 58,
+    "message": "value assigned to err is never read",
+    "fingerprint": "60b2eedaa5825009"
+  }
+]
+```
+
+The two inputs carry no `fingerprint`, so verdict fills one in for each while
+decoding. Swapping the argument order produces byte-identical output — the
+merge is sorted by location, not by input order.
+
+The same two files render as a report grouped by tool and then by file:
+
+```sh
+verdict --format=markdown examples/secretscan.json examples/staticcheck.json
+```
+
+```markdown
+# Findings
+
+## secretscan
+
+### config/settings.go
+
+- config/settings.go:12 — `aws-key` (error): possible AWS access key
+
+### deploy/env.sh
+
+- deploy/env.sh:4 — `generic-token` (warning): high-entropy string assigned to TOKEN
+
+## staticcheck
+
+### config/settings.go
+
+- config/settings.go:31 — `U1000` (warning): func loadLegacy is unused
+
+### server/handler.go
+
+- server/handler.go:58 — `SA4006` (info): value assigned to err is never read
+```
+
+And gating on the error turns the run into a CI check. The merge still prints;
+the process exits `2` because the AWS-key finding is an error:
+
+```sh
+verdict --fail-on=error examples/secretscan.json examples/staticcheck.json
+echo $?   # 2
+```
+
 ## Development
 
 ```sh
