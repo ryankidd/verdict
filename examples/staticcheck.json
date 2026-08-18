@@ -1,0 +1,18 @@
+[
+  {
+    "tool": "staticcheck",
+    "rule": "U1000",
+    "severity": "warning",
+    "path": "config/settings.go",
+    "line": 31,
+    "message": "func loadLegacy is unused"
+  },
+  {
+    "tool": "staticcheck",
+    "rule": "SA4006",
+    "severity": "info",
+    "path": "server/handler.go",
+    "line": 58,
+    "message": "value assigned to err is never read"
+  }
+]
